@@ -319,10 +319,13 @@ tr:hover td{background:#f8fafc;}
     async loadStacks() {
       this.isLoadingStacks = true;
       try {
-        var res = await fetch('/cc-ui/v1/stacks');
+        var res = await fetch('/cc-ui/v1/stacks/');
         if (!res.ok) throw new Error('Failed to load projects (' + res.status + ')');
         var data = await res.json();
         var list = Array.isArray(data) ? data : (data.content || data.stacks || []);
+        // exclude templates, starter projects, alpha blueprints
+        list = list.filter(function(s){ return !s.template && !s.starterProject && !s.alphaBlueprint; });
+        list.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
         this.stacks = list;
         var sel = this.shadowRoot.getElementById('stack-select');
         if (sel) {
@@ -350,9 +353,11 @@ tr:hover td{background:#f8fafc;}
           envSel.disabled = false;
           envSel.innerHTML = '<option value="">Select environment…</option>' +
             list.map(function(c){
-              var id = c.id || c.clusterId || c.name;
-              var nm = c.name || c.clusterName || id;
-              return '<option value="' + id + '">' + nm + '</option>';
+              // clusters-overview: { id, cluster: { name, ... }, clusterState }
+              var id = c.id || c.clusterId || (c.cluster && c.cluster.id);
+              var nm = (c.cluster && c.cluster.name) || c.name || c.clusterName || id;
+              var state = c.clusterState ? ' [' + c.clusterState + ']' : '';
+              return '<option value="' + id + '">' + nm + state + '</option>';
             }).join('');
         }
       } catch(err) {
