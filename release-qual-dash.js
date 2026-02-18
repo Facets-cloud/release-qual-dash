@@ -182,6 +182,8 @@
 .btn-apply{height:36px;padding:0 20px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;}
 .btn-apply:hover{background:#4f46e5;}
 .btn-apply:disabled{background:#a5b4fc;cursor:not-allowed;}
+.btn-retry{height:36px;padding:0 16px;background:#fff;color:#6366f1;border:1px solid #6366f1;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}
+.btn-retry:hover{background:#eef2ff;}
 
 /* filters */
 .filters{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;}
@@ -270,7 +272,10 @@ tr:hover td{background:#f8fafc;}
       <input type="date" id="to-date"/>
     </div>
     <button class="btn-apply" id="btn-apply" disabled>Apply</button>
+    <button class="btn-retry" id="btn-retry-stacks" style="display:none;" title="Retry loading projects">↺ Retry</button>
   </div>
+
+  <div id="stack-load-error" style="display:none;background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:12px;"></div>
 
   <!-- Main content area -->
   <div id="main-content">
@@ -288,6 +293,8 @@ tr:hover td{background:#f8fafc;}
       sr.getElementById('stack-select').addEventListener('change', this._onStackChange.bind(this));
       sr.getElementById('env-select').addEventListener('change', this._onEnvChange.bind(this));
       sr.getElementById('btn-apply').addEventListener('click', this._onApply.bind(this));
+      var retryBtn = sr.getElementById('btn-retry-stacks');
+      if (retryBtn) retryBtn.addEventListener('click', this.loadStacks.bind(this));
     }
 
     _onStackChange(e) {
@@ -318,22 +325,38 @@ tr:hover td{background:#f8fafc;}
     // ── Data Loading ──────────────────────────────────────────────────────────
     async loadStacks() {
       this.isLoadingStacks = true;
+      var sel = this.shadowRoot.getElementById('stack-select');
+      var errBanner = this.shadowRoot.getElementById('stack-load-error');
+      var retryBtn = this.shadowRoot.getElementById('btn-retry-stacks');
+      if (sel) { sel.disabled = true; sel.innerHTML = '<option>⏳ Loading projects…</option>'; }
+      if (errBanner) errBanner.style.display = 'none';
+      if (retryBtn) retryBtn.style.display = 'none';
       try {
         var res = await fetch('/cc-ui/v1/stacks/');
-        if (!res.ok) throw new Error('Failed to load projects (' + res.status + ')');
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' from /cc-ui/v1/stacks/');
         var data = await res.json();
         var list = Array.isArray(data) ? data : (data.content || data.stacks || []);
         // exclude templates, starter projects, alpha blueprints
         list = list.filter(function(s){ return !s.template && !s.starterProject && !s.alphaBlueprint; });
         list.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
         this.stacks = list;
-        var sel = this.shadowRoot.getElementById('stack-select');
         if (sel) {
-          sel.innerHTML = '<option value="">Select project…</option>' +
-            list.map(function(s){ return '<option value="' + (s.name||s) + '">' + (s.name||s) + '</option>'; }).join('');
+          sel.disabled = false;
+          if (list.length === 0) {
+            sel.innerHTML = '<option value="">⚠ No projects found</option>';
+          } else {
+            sel.innerHTML = '<option value="">— Select project (' + list.length + ') —</option>' +
+              list.map(function(s){ return '<option value="' + (s.name||s) + '">' + (s.name||s) + '</option>'; }).join('');
+          }
         }
       } catch(err) {
-        console.warn('Could not load stacks:', err.message);
+        console.error('loadStacks failed:', err);
+        if (sel) { sel.disabled = false; sel.innerHTML = '<option value="">⚠ Failed to load projects</option>'; }
+        if (errBanner) {
+          errBanner.textContent = '⚠ Could not load projects: ' + err.message + '. Check your session or refresh the page.';
+          errBanner.style.display = 'block';
+        }
+        if (retryBtn) retryBtn.style.display = 'inline-block';
       } finally {
         this.isLoadingStacks = false;
       }
